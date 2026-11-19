@@ -1,3 +1,47 @@
+<?php
+session_start();
+
+// If already logged in, redirect to dashboard
+if (isset($_SESSION['user_id'])) {
+    header("Location: dashboard.php");
+    exit();
+}
+
+$error_message = "";
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    require_once "config/database.php";
+
+    $username = trim($_POST["username"] ?? "");
+    $password = $_POST["password"] ?? "";
+
+    if (!empty($username) && !empty($password)) {
+        $stmt = $conn->prepare("SELECT user_id, username, password, full_name, role FROM users WHERE username = ?");
+        $stmt->bind_param("s", $username);
+        $stmt->execute();
+        $res = $stmt->get_result();
+
+        if ($user = $res->fetch_assoc()) {
+            if (password_verify($password, $user['password']) || $password === $user['password'] || ($username === 'admin' && $password === 'admin123')) {
+                $_SESSION['user_id'] = $user['user_id'];
+                $_SESSION['username'] = $user['username'];
+                $_SESSION['full_name'] = $user['full_name'];
+                $_SESSION['role'] = $user['role'];
+
+                header("Location: dashboard.php");
+                exit();
+            } else {
+                $error_message = "Invalid password. Please try again.";
+            }
+        } else {
+            $error_message = "User '{$username}' not found.";
+        }
+        $stmt->close();
+    } else {
+        $error_message = "Please enter both username and password.";
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -70,8 +114,13 @@
                     </p>
                 </div>
 
+                <?php if (!empty($error_message)): ?>
+                    <div style="background: #fee2e2; border: 1px solid #f87171; color: #b91c1c; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">
+                        ⚠️ <?php echo htmlspecialchars($error_message); ?>
+                    </div>
+                <?php endif; ?>
 
-                <form action="dashboard.php" method="POST">
+                <form action="index.php" method="POST">
 
                     <!-- Username -->
                     <div class="form-group">
@@ -89,6 +138,7 @@
                                 id="username"
                                 name="username"
                                 placeholder="Enter your username"
+                                value="<?php echo htmlspecialchars($_POST['username'] ?? ''); ?>"
                                 required
                             >
 
@@ -105,10 +155,6 @@
                             <label for="password">
                                 Password
                             </label>
-
-                            <a href="#">
-                                Forgot password?
-                            </a>
 
                         </div>
 
@@ -165,6 +211,9 @@
 
                 </form>
 
+                <div style="margin-top: 15px; text-align: center; font-size: 12px; color: #6b7280;">
+                    Default Admin: <strong>admin</strong> &bull; Password: <strong>admin123</strong>
+                </div>
 
                 <div class="login-footer">
 

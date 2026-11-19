@@ -1,10 +1,11 @@
 FROM php:8.2-apache
 
-# Install MySQL extensions for PHP
-RUN docker-php-ext-install mysqli pdo pdo_mysql
-
-# Enable Apache rewrite module
-RUN a2enmod rewrite
+# Install MariaDB server and PHP MySQL extensions
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y mariadb-server && \
+    docker-php-ext-install mysqli pdo pdo_mysql && \
+    a2enmod rewrite && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /var/www/html

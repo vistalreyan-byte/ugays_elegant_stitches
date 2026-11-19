@@ -1,968 +1,298 @@
 <?php
+require_once "config/auth.php";
+require_once "config/database.php";
 
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+$page_title = "Dashboard";
 
-$total_customers = 120;
-$tailoring_orders = 25;
-$active_rentals = 18;
-$today_sales = 8450.00;
+// Fetch live statistics
+$res = $conn->query("SELECT COUNT(*) FROM customers");
+$total_customers = $res ? (int)$res->fetch_row()[0] : 0;
 
+$res = $conn->query("SELECT COUNT(*) FROM tailoring_orders");
+$tailoring_orders = $res ? (int)$res->fetch_row()[0] : 0;
+
+$res = $conn->query("SELECT COUNT(*) FROM rentals WHERE status IN ('Reserved', 'Rented')");
+$active_rentals = $res ? (int)$res->fetch_row()[0] : 0;
+
+$res = $conn->query("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(payment_date) = CURDATE()");
+$today_sales = $res ? (float)$res->fetch_row()[0] : 0.00;
+
+// Fetch Recent Orders (combine tailoring orders and rentals)
+$recent_tailoring = $conn->query("
+    SELECT t.order_id, c.customer_name, 'Tailoring' as order_type, t.service_type as item_name, t.status, t.due_date, t.total_amount
+    FROM tailoring_orders t
+    LEFT JOIN customers c ON t.customer_id = c.customer_id
+    ORDER BY t.created_at DESC
+    LIMIT 5
+");
+
+// Fetch Upcoming Appointments
+$upcoming_appointments = $conn->query("
+    SELECT a.appointment_id, c.customer_name, a.appointment_date, a.appointment_time, a.service_type, a.status
+    FROM appointments a
+    LEFT JOIN customers c ON a.customer_id = c.customer_id
+    WHERE a.status IN ('Scheduled', 'Confirmed')
+    ORDER BY a.appointment_date ASC, a.appointment_time ASC
+    LIMIT 4
+");
+
+// Fetch Inventory items
+$top_inventory = $conn->query("
+    SELECT item_name, category, rental_price, quantity, status
+    FROM inventory
+    ORDER BY quantity DESC
+    LIMIT 4
+");
+
+include __DIR__ . '/includes/header.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
+<!-- ==================================
+     STAT CARDS
+=================================== -->
+<div class="stats-grid">
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Dashboard | Ugay's Elegant</title>
-
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
-
-    <!-- Font Awesome -->
-    <link
-        rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
-    >
-
-    <!-- Dashboard CSS -->
-    <link rel="stylesheet" href="assets/css/dashboard.css">
-</head>
-
-<body>
-
-<div class="dashboard-wrapper">
-
-
-    <!-- ==========================================
-         SIDEBAR
-    =========================================== -->
-
-    <aside class="sidebar" id="sidebar">
-
-        <!-- Logo -->
-        <div class="brand">
-
-            <div class="brand-dress">
-                <i class="fa-solid fa-person-dress"></i>
-            </div>
-
-            <div class="brand-name">
-                <h1>Ugay's</h1>
-                <h2>Elegant</h2>
-
-                <p>Tailoring & Rental Shop</p>
-            </div>
-
+    <!-- Customers -->
+    <div class="stat-card">
+        <div class="stat-icon pink">
+            <i class="fa-solid fa-users"></i>
         </div>
-
-
-        <!-- Navigation -->
-        <nav class="sidebar-nav">
-
-            <a href="dashboard.php" class="nav-item active">
-                <i class="fa-solid fa-house"></i>
-                <span>Dashboard</span>
-            </a>
-
-            <a href="#" class="nav-item">
-                <i class="fa-solid fa-users"></i>
-                <span>Customers</span>
-            </a>
-
-            <a href="#" class="nav-item">
-                <i class="fa-solid fa-scissors"></i>
-                <span>Tailoring Orders</span>
-            </a>
-
-            <a href="#" class="nav-item">
-                <i class="fa-solid fa-person-dress"></i>
-                <span>Rental Management</span>
-            </a>
-
-            <a href="#" class="nav-item">
-                <i class="fa-solid fa-box"></i>
-                <span>Inventory</span>
-            </a>
-
-            <a href="#" class="nav-item">
-                <i class="fa-regular fa-calendar-days"></i>
-                <span>Appointments</span>
-            </a>
-
-            <a href="#" class="nav-item">
-                <i class="fa-regular fa-credit-card"></i>
-                <span>Payments</span>
-            </a>
-
-            <a href="#" class="nav-item">
-                <i class="fa-solid fa-chart-column"></i>
-                <span>Reports</span>
-            </a>
-
-            <a href="#" class="nav-item">
-                <i class="fa-solid fa-user-tie"></i>
-                <span>Employees</span>
-            </a>
-
-            <a href="#" class="nav-item">
-                <i class="fa-solid fa-gear"></i>
-                <span>Settings</span>
-            </a>
-
-        </nav>
-
-
-        <!-- Logout -->
-        <div class="sidebar-bottom">
-
-            <a href="index.php" class="logout-btn">
-                <i class="fa-solid fa-arrow-right-from-bracket"></i>
-                <span>Logout</span>
-            </a>
-
+        <div class="stat-content">
+            <p>Total Customers</p>
+            <h2><?php echo $total_customers; ?></h2>
+            <span class="positive"><i class="fa-solid fa-circle-check"></i> Registered</span>
         </div>
+        <div class="mini-chart pink-chart">
+            <span></span><span></span><span></span><span></span><span></span>
+        </div>
+    </div>
 
-
-        <!-- Decorative sewing illustration -->
-        <div class="sewing-decoration">
-
-            <i class="fa-solid fa-person-dress"></i>
+    <!-- Tailoring -->
+    <div class="stat-card">
+        <div class="stat-icon purple">
             <i class="fa-solid fa-scissors"></i>
-
         </div>
-
-    </aside>
-
-
-
-    <!-- ==========================================
-         MAIN CONTENT
-    =========================================== -->
-
-    <main class="main-content">
-
-
-        <!-- ======================================
-             TOP HEADER
-        ======================================= -->
-
-        <header class="top-header">
-
-            <div class="header-left">
-
-                <button
-                    class="menu-btn"
-                    id="menuBtn"
-                    type="button"
-                >
-                    <i class="fa-solid fa-bars"></i>
-                </button>
-
-                <h1>Dashboard</h1>
-
-            </div>
-
-
-            <div class="header-right">
-
-                <!-- Search -->
-                <div class="search-box">
-
-                    <i class="fa-solid fa-magnifying-glass"></i>
-
-                    <input
-                        type="text"
-                        id="globalSearch"
-                        placeholder="Search anything..."
-                    >
-
-                </div>
-
-
-                <!-- Notification -->
-                <button class="notification-btn">
-
-                    <i class="fa-regular fa-bell"></i>
-
-                    <span>3</span>
-
-                </button>
-
-
-                <!-- Admin -->
-                <div class="admin-profile">
-
-                    <div class="admin-avatar">
-                        <i class="fa-solid fa-user"></i>
-                    </div>
-
-                    <div class="admin-info">
-
-                        <strong>Admin User</strong>
-
-                        <small>Administrator</small>
-
-                    </div>
-
-                    <i class="fa-solid fa-chevron-down"></i>
-
-                </div>
-
-            </div>
-
-        </header>
-
-
-
-        <!-- ======================================
-             PAGE CONTENT
-        ======================================= -->
-
-        <section class="page-content">
-
-
-            <!-- ==================================
-                 STAT CARDS
-            =================================== -->
-
-            <div class="stats-grid">
-
-
-                <!-- Customers -->
-                <div class="stat-card">
-
-                    <div class="stat-icon pink">
-                        <i class="fa-solid fa-users"></i>
-                    </div>
-
-                    <div class="stat-content">
-
-                        <p>Total Customers</p>
-
-                        <h2>
-                            <?php echo $total_customers; ?>
-                        </h2>
-
-                        <span class="positive">
-                            +12 this month
-                        </span>
-
-                    </div>
-
-                    <div class="mini-chart pink-chart">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-
-                </div>
-
-
-                <!-- Tailoring -->
-                <div class="stat-card">
-
-                    <div class="stat-icon purple">
-                        <i class="fa-solid fa-scissors"></i>
-                    </div>
-
-                    <div class="stat-content">
-
-                        <p>Tailoring Orders</p>
-
-                        <h2>
-                            <?php echo $tailoring_orders; ?>
-                        </h2>
-
-                        <span class="purple-text">
-                            8 In Progress
-                        </span>
-
-                    </div>
-
-                    <div class="mini-chart purple-chart">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-
-                </div>
-
-
-                <!-- Rentals -->
-                <div class="stat-card">
-
-                    <div class="stat-icon teal">
-                        <i class="fa-solid fa-person-dress"></i>
-                    </div>
-
-                    <div class="stat-content">
-
-                        <p>Active Rentals</p>
-
-                        <h2>
-                            <?php echo $active_rentals; ?>
-                        </h2>
-
-                        <span class="teal-text">
-                            5 Reserved
-                        </span>
-
-                    </div>
-
-                    <div class="mini-chart teal-chart">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-
-                </div>
-
-
-                <!-- Sales -->
-                <div class="stat-card">
-
-                    <div class="stat-icon orange">
-                        <i class="fa-solid fa-peso-sign"></i>
-                    </div>
-
-                    <div class="stat-content">
-
-                        <p>Today's Sales</p>
-
-                        <h2>
-                            ₱<?php echo number_format($today_sales, 2); ?>
-                        </h2>
-
-                        <span class="positive">
-                            +14% vs yesterday
-                        </span>
-
-                    </div>
-
-                    <div class="mini-chart orange-chart">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- ==================================
-                 MIDDLE SECTION
-            =================================== -->
-
-            <div class="middle-grid">
-
-
-                <!-- Recent Orders -->
-                <div class="panel recent-orders">
-
-                    <div class="panel-header">
-
-                        <div>
-
-                            <i class="fa-solid fa-list"></i>
-
-                            <h2>Recent Orders</h2>
-
-                        </div>
-
-                        <a href="#">
-                            View All
-                        </a>
-
-                    </div>
-
-
-                    <div class="table-container">
-
-                        <table>
-
-                            <thead>
-
-                                <tr>
-                                    <th>ORDER ID</th>
-                                    <th>CUSTOMER</th>
-                                    <th>TYPE</th>
-                                    <th>ITEM / SERVICE</th>
-                                    <th>STATUS</th>
-                                    <th>DUE / RETURN</th>
-                                    <th>AMOUNT</th>
-                                </tr>
-
-                            </thead>
-
-                            <tbody>
-
-                                <tr>
-
-                                    <td>TO-2024-025</td>
-
-                                    <td>Maria Santos</td>
-
-                                    <td>Tailoring</td>
-
-                                    <td>Evening Gown</td>
-
-                                    <td>
-                                        <span class="status purple-status">
-                                            In Progress
-                                        </span>
-                                    </td>
-
-                                    <td>May 20, 2024</td>
-
-                                    <td>₱800.00</td>
-
-                                </tr>
-
-
-                                <tr>
-
-                                    <td>RO-2024-018</td>
-
-                                    <td>John Dela Cruz</td>
-
-                                    <td>Rental</td>
-
-                                    <td>Classic Suit</td>
-
-                                    <td>
-                                        <span class="status orange-status">
-                                            Reserved
-                                        </span>
-                                    </td>
-
-                                    <td>May 18, 2024</td>
-
-                                    <td>₱1,200.00</td>
-
-                                </tr>
-
-
-                                <tr>
-
-                                    <td>TO-2024-024</td>
-
-                                    <td>Angela Garcia</td>
-
-                                    <td>Tailoring</td>
-
-                                    <td>Barong Tagalog</td>
-
-                                    <td>
-                                        <span class="status blue-status">
-                                            Pending
-                                        </span>
-                                    </td>
-
-                                    <td>May 22, 2024</td>
-
-                                    <td>₱2,500.00</td>
-
-                                </tr>
-
-
-                                <tr>
-
-                                    <td>RO-2024-017</td>
-
-                                    <td>Mark Reyes</td>
-
-                                    <td>Rental</td>
-
-                                    <td>Debut Gown</td>
-
-                                    <td>
-                                        <span class="status green-status">
-                                            Rented
-                                        </span>
-                                    </td>
-
-                                    <td>May 19, 2024</td>
-
-                                    <td>₱1,800.00</td>
-
-                                </tr>
-
-
-                                <tr>
-
-                                    <td>TO-2024-023</td>
-
-                                    <td>Jessica Lee</td>
-
-                                    <td>Tailoring</td>
-
-                                    <td>Bridesmaid Dress</td>
-
-                                    <td>
-                                        <span class="status orange-status">
-                                            For Fitting
-                                        </span>
-                                    </td>
-
-                                    <td>May 24, 2024</td>
-
-                                    <td>₱1,200.00</td>
-
-                                </tr>
-
-                            </tbody>
-
-                        </table>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- Upcoming Appointments -->
-                <div class="panel appointments">
-
-                    <div class="panel-header">
-
-                        <div>
-
-                            <i class="fa-regular fa-calendar"></i>
-
-                            <h2>Upcoming Appointments</h2>
-
-                        </div>
-
-                        <a href="#">
-                            View All
-                        </a>
-
-                    </div>
-
-
-                    <div class="appointment-list">
-
-
-                        <div class="appointment-item">
-
-                            <div class="date-box">
-                                <small>MAY</small>
-                                <strong>18</strong>
-                                <span>SAT</span>
-                            </div>
-
-                            <div class="appointment-info">
-
-                                <strong>Fitting</strong>
-
-                                <p>Maria Santos</p>
-
-                                <small>10:00 AM - 10:30 AM</small>
-
-                            </div>
-
-                            <span class="scheduled">
-                                Scheduled
-                            </span>
-
-                        </div>
-
-
-                        <div class="appointment-item">
-
-                            <div class="date-box">
-                                <small>MAY</small>
-                                <strong>18</strong>
-                                <span>SAT</span>
-                            </div>
-
-                            <div class="appointment-info">
-
-                                <strong>Measurement</strong>
-
-                                <p>John Dela Cruz</p>
-
-                                <small>11:00 AM - 11:30 AM</small>
-
-                            </div>
-
-                            <span class="scheduled">
-                                Scheduled
-                            </span>
-
-                        </div>
-
-
-                        <div class="appointment-item">
-
-                            <div class="date-box">
-                                <small>MAY</small>
-                                <strong>19</strong>
-                                <span>SUN</span>
-                            </div>
-
-                            <div class="appointment-info">
-
-                                <strong>Pickup</strong>
-
-                                <p>Angela Garcia</p>
-
-                                <small>02:00 PM - 02:30 PM</small>
-
-                            </div>
-
-                            <span class="scheduled">
-                                Scheduled
-                            </span>
-
-                        </div>
-
-
-                        <div class="appointment-item">
-
-                            <div class="date-box">
-                                <small>MAY</small>
-                                <strong>20</strong>
-                                <span>MON</span>
-                            </div>
-
-                            <div class="appointment-info">
-
-                                <strong>Return</strong>
-
-                                <p>Mark Reyes</p>
-
-                                <small>03:00 PM - 03:30 PM</small>
-
-                            </div>
-
-                            <span class="scheduled">
-                                Scheduled
-                            </span>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- ==================================
-                 BOTTOM SECTION
-            =================================== -->
-
-            <div class="bottom-grid">
-
-
-                <!-- Sales Overview -->
-                <div class="panel sales-panel">
-
-                    <div class="panel-header">
-
-                        <div>
-                            <h2>Sales Overview</h2>
-                        </div>
-
-                        <select>
-                            <option>This Month</option>
-                            <option>Last Month</option>
-                            <option>This Year</option>
-                        </select>
-
-                    </div>
-
-
-                    <div class="sales-chart">
-
-                        <div class="y-axis">
-
-                            <span>20K</span>
-                            <span>15K</span>
-                            <span>10K</span>
-                            <span>5K</span>
-                            <span>0</span>
-
-                        </div>
-
-                        <div class="chart-area">
-
-                            <div class="chart-lines"></div>
-
-                            <svg
-                                viewBox="0 0 700 250"
-                                preserveAspectRatio="none"
-                            >
-
-                                <polyline
-                                    points="0,200 50,130 100,160 150,130 200,90 250,70 300,130 350,105 400,125 450,80 500,150 550,115 600,145 650,100 700,75"
-                                    fill="none"
-                                    stroke="#e83e8c"
-                                    stroke-width="4"
-                                />
-
-                                <polygon
-                                    points="0,200 50,130 100,160 150,130 200,90 250,70 300,130 350,105 400,125 450,80 500,150 550,115 600,145 650,100 700,75 700,250 0,250"
-                                    fill="rgba(232,62,140,0.08)"
-                                />
-
-                            </svg>
-
-                            <div class="x-axis">
-
-                                <span>May 1</span>
-                                <span>May 7</span>
-                                <span>May 13</span>
-                                <span>May 19</span>
-                                <span>May 25</span>
-                                <span>May 31</span>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- Orders By Status -->
-                <div class="panel status-panel">
-
-                    <div class="panel-header">
-
-                        <h2>Orders by Status</h2>
-
-                    </div>
-
-
-                    <div class="status-content">
-
-                        <div class="donut-chart">
-
-                            <div class="donut-center">
-
-                                <strong>50</strong>
-
-                                <span>Total</span>
-
-                            </div>
-
-                        </div>
-
-
-                        <div class="status-list">
-
-                            <div>
-                                <span class="dot blue-dot"></span>
-                                Pending
-                                <strong>10 (20%)</strong>
-                            </div>
-
-                            <div>
-                                <span class="dot purple-dot"></span>
-                                In Progress
-                                <strong>15 (30%)</strong>
-                            </div>
-
-                            <div>
-                                <span class="dot orange-dot"></span>
-                                For Fitting
-                                <strong>8 (16%)</strong>
-                            </div>
-
-                            <div>
-                                <span class="dot green-dot"></span>
-                                Completed
-                                <strong>12 (24%)</strong>
-                            </div>
-
-                            <div>
-                                <span class="dot pink-dot"></span>
-                                Cancelled
-                                <strong>5 (10%)</strong>
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- Top Rental Items -->
-                <div class="panel rental-panel">
-
-                    <div class="panel-header">
-
-                        <h2>Top Rental Items</h2>
-
-                        <a href="#">View All</a>
-
-                    </div>
-
-
-                    <div class="rental-list">
-
-
-                        <div class="rental-item">
-
-                            <div class="item-image blue-dress">
-                                <i class="fa-solid fa-person-dress"></i>
-                            </div>
-
-                            <div class="item-info">
-
-                                <strong>Debut Gown (Blue)</strong>
-
-                                <small>
-                                    ₱1,800.00 / 2 days
-                                </small>
-
-                            </div>
-
-                            <span>12</span>
-
-                        </div>
-
-
-                        <div class="rental-item">
-
-                            <div class="item-image red-dress">
-                                <i class="fa-solid fa-person-dress"></i>
-                            </div>
-
-                            <div class="item-info">
-
-                                <strong>Elegant Evening Gown (Red)</strong>
-
-                                <small>
-                                    ₱1,500.00 / 2 days
-                                </small>
-
-                            </div>
-
-                            <span>9</span>
-
-                        </div>
-
-
-                        <div class="rental-item">
-
-                            <div class="item-image black-suit">
-                                <i class="fa-solid fa-user-tie"></i>
-                            </div>
-
-                            <div class="item-info">
-
-                                <strong>Classic Suit (Black)</strong>
-
-                                <small>
-                                    ₱1,200.00 / 2 days
-                                </small>
-
-                            </div>
-
-                            <span>8</span>
-
-                        </div>
-
-
-                        <div class="rental-item">
-
-                            <div class="item-image cream-barong">
-                                <i class="fa-solid fa-shirt"></i>
-                            </div>
-
-                            <div class="item-info">
-
-                                <strong>Formal Barong (Cream)</strong>
-
-                                <small>
-                                    ₱800.00 / 2 days
-                                </small>
-
-                            </div>
-
-                            <span>7</span>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- ==================================
-                 WELCOME BANNER
-            =================================== -->
-
-            <div class="welcome-banner">
-
-                <div class="welcome-icon">
-                    <i class="fa-solid fa-person-dress"></i>
-                </div>
-
-                <div class="welcome-text">
-
-                    <h2>
-                        Welcome back, Admin! 👋
-                    </h2>
-
-                    <p>
-                        Manage your tailoring and rental shop easily.
-                    </p>
-
-                </div>
-
-                <div class="quote">
-
-                    <p>
-                        "Style is a way to say who you are
-                        without having to speak."
-                    </p>
-
-                </div>
-
-                <div class="banner-dress">
-                    <i class="fa-solid fa-person-dress"></i>
-                </div>
-
-            </div>
-
-
-        </section>
-
-    </main>
+        <div class="stat-content">
+            <p>Tailoring Orders</p>
+            <h2><?php echo $tailoring_orders; ?></h2>
+            <span class="purple-text"><i class="fa-solid fa-clock"></i> Total recorded</span>
+        </div>
+        <div class="mini-chart purple-chart">
+            <span></span><span></span><span></span><span></span><span></span>
+        </div>
+    </div>
+
+    <!-- Rentals -->
+    <div class="stat-card">
+        <div class="stat-icon teal">
+            <i class="fa-solid fa-person-dress"></i>
+        </div>
+        <div class="stat-content">
+            <p>Active Rentals</p>
+            <h2><?php echo $active_rentals; ?></h2>
+            <span class="teal-text"><i class="fa-solid fa-calendar-check"></i> Reserved / Rented</span>
+        </div>
+        <div class="mini-chart teal-chart">
+            <span></span><span></span><span></span><span></span><span></span>
+        </div>
+    </div>
+
+    <!-- Sales -->
+    <div class="stat-card">
+        <div class="stat-icon orange">
+            <i class="fa-solid fa-peso-sign"></i>
+        </div>
+        <div class="stat-content">
+            <p>Today's Payments</p>
+            <h2>₱<?php echo number_format($today_sales, 2); ?></h2>
+            <span class="positive"><i class="fa-solid fa-coins"></i> Today</span>
+        </div>
+        <div class="mini-chart orange-chart">
+            <span></span><span></span><span></span><span></span><span></span>
+        </div>
+    </div>
 
 </div>
 
+<!-- ==================================
+     MIDDLE SECTION
+=================================== -->
+<div class="middle-grid">
 
-<script src="assets/js/dashboard.js"></script>
+    <!-- Recent Tailoring Orders -->
+    <div class="panel recent-orders">
+        <div class="panel-header">
+            <div>
+                <i class="fa-solid fa-list"></i>
+                <h2>Recent Tailoring Orders</h2>
+            </div>
+            <a href="orders.php" class="btn btn-sm btn-secondary">View All</a>
+        </div>
 
-</body>
-</html>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ORDER ID</th>
+                        <th>CUSTOMER</th>
+                        <th>TYPE</th>
+                        <th>SERVICE / ITEM</th>
+                        <th>STATUS</th>
+                        <th>DUE DATE</th>
+                        <th>AMOUNT</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($recent_tailoring && $recent_tailoring->num_rows > 0): ?>
+                        <?php while ($row = $recent_tailoring->fetch_assoc()): ?>
+                            <tr>
+                                <td><strong>#TO-<?php echo str_pad($row['order_id'], 4, '0', STR_PAD_LEFT); ?></strong></td>
+                                <td><?php echo htmlspecialchars($row['customer_name'] ?? 'Walk-in Customer'); ?></td>
+                                <td>Tailoring</td>
+                                <td><?php echo htmlspecialchars($row['item_name'] ?? 'Custom Order'); ?></td>
+                                <td>
+                                    <?php 
+                                    $st = strtolower($row['status'] ?? '');
+                                    $badge = 'badge-pending';
+                                    if ($st === 'in progress') $badge = 'badge-progress';
+                                    elseif ($st === 'ready') $badge = 'badge-ready';
+                                    elseif ($st === 'completed') $badge = 'badge-completed';
+                                    elseif ($st === 'cancelled') $badge = 'badge-cancelled';
+                                    ?>
+                                    <span class="badge <?php echo $badge; ?>"><?php echo htmlspecialchars($row['status'] ?? 'Pending'); ?></span>
+                                </td>
+                                <td><?php echo $row['due_date'] ? date('M d, Y', strtotime($row['due_date'])) : '—'; ?></td>
+                                <td><strong>₱<?php echo number_format($row['total_amount'] ?? 0, 2); ?></strong></td>
+                            </tr>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="7" style="text-align:center; padding: 24px; color: #9ca3af;">
+                                No tailoring orders recorded yet. <a href="orders.php" style="color: #8b5cf6; font-weight:600;">Create an Order</a>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Upcoming Appointments -->
+    <div class="panel appointments">
+        <div class="panel-header">
+            <div>
+                <i class="fa-regular fa-calendar"></i>
+                <h2>Upcoming Appointments</h2>
+            </div>
+            <a href="appointment.php" class="btn btn-sm btn-secondary">View All</a>
+        </div>
+
+        <div class="appointment-list">
+            <?php if ($upcoming_appointments && $upcoming_appointments->num_rows > 0): ?>
+                <?php while ($app = $upcoming_appointments->fetch_assoc()): ?>
+                    <div class="appointment-item">
+                        <div class="date-box">
+                            <small><?php echo strtoupper(date('M', strtotime($app['appointment_date']))); ?></small>
+                            <strong><?php echo date('d', strtotime($app['appointment_date'])); ?></strong>
+                            <span><?php echo strtoupper(date('D', strtotime($app['appointment_date']))); ?></span>
+                        </div>
+                        <div class="appointment-info">
+                            <strong><?php echo htmlspecialchars($app['service_type']); ?></strong>
+                            <p><?php echo htmlspecialchars($app['customer_name'] ?? 'Customer'); ?></p>
+                            <small><?php echo date('h:i A', strtotime($app['appointment_time'])); ?></small>
+                        </div>
+                        <span class="scheduled"><?php echo htmlspecialchars($app['status']); ?></span>
+                    </div>
+                <?php endwhile; ?>
+            <?php else: ?>
+                <div style="text-align:center; padding: 30px 10px; color: #9ca3af;">
+                    <i class="fa-regular fa-calendar-xmark" style="font-size: 28px; margin-bottom: 8px; opacity: 0.6;"></i>
+                    <p>No upcoming appointments.</p>
+                    <a href="appointment.php" class="btn btn-sm btn-primary" style="margin-top: 10px;">Schedule One</a>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+</div>
+
+<!-- ==================================
+     BOTTOM SECTION / INVENTORY OVERVIEW
+=================================== -->
+<div class="middle-grid" style="grid-template-columns: 1fr;">
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <i class="fa-solid fa-box"></i>
+                <h2>Rental Inventory Highlights</h2>
+            </div>
+            <a href="inventory.php" class="btn btn-sm btn-secondary">Manage Inventory</a>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ITEM NAME</th>
+                        <th>CATEGORY</th>
+                        <th>RENTAL PRICE</th>
+                        <th>AVAILABLE STOCK</th>
+                        <th>STATUS</th>
+                        <th>ACTION</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($top_inventory && $top_inventory->num_rows > 0): ?>
+                        <?php while ($inv = $top_inventory->fetch_assoc()): ?>
+                            <tr>
+                                <td><strong><?php echo htmlspecialchars($inv['item_name']); ?></strong></td>
+                                <td><?php echo htmlspecialchars($inv['category']); ?></td>
+                                <td>₱<?php echo number_format($inv['rental_price'], 2); ?></td>
+                                <td><?php echo (int)$inv['quantity']; ?> pcs</td>
+                                <td>
+                                    <?php 
+                                    $st = strtolower($inv['status'] ?? '');
+                                    $badge = 'badge-available';
+                                    if ($st === 'low stock') $badge = 'badge-lowstock';
+                                    elseif ($st === 'out of stock') $badge = 'badge-outstock';
+                                    ?>
+                                    <span class="badge <?php echo $badge; ?>"><?php echo htmlspecialchars($inv['status']); ?></span>
+                                </td>
+                                <td>
+                                    <a href="rentals.php" class="btn btn-sm btn-primary">Rent Item</a>
+                                </td>
+                            </tr>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="6" style="text-align:center; padding: 20px; color: #9ca3af;">
+                                No inventory items added yet. <a href="inventory.php" style="color:#8b5cf6; font-weight:600;">Add Items</a>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ==================================
+     WELCOME BANNER
+=================================== -->
+<div class="welcome-banner">
+    <div class="welcome-icon">
+        <i class="fa-solid fa-person-dress"></i>
+    </div>
+    <div class="welcome-text">
+        <h2>Welcome back, <?php echo htmlspecialchars($_SESSION['full_name'] ?? 'Admin'); ?>! 👋</h2>
+        <p>Manage your tailoring and rental shop easily.</p>
+    </div>
+    <div class="quote">
+        <p>"Style is a way to say who you are without having to speak."</p>
+    </div>
+    <div class="banner-dress">
+        <i class="fa-solid fa-person-dress"></i>
+    </div>
+</div>
+
+<?php include __DIR__ . '/includes/footer.php'; ?>
